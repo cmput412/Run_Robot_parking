@@ -867,10 +867,10 @@ class ApproachTag(smach.State):
 
     ### Go to Predetermined Waypoint ###
 
-class GoToWayPoint(smach.state):
-    def __init__():
-
-
+#class GoToWayPoint(smach.state):
+#    def __init__():
+#	pass
+	
         
 
     
@@ -924,7 +924,7 @@ def main():
                                         transitions = { 'Turn180': 'Turn180',
                                                         'TurnClock': 'Turn90Clockwise',
                                                         'Done' : 'DoneProgram'})
-
+'''
         #AR tag-related states and transitions 
         smach.StateMachine.add('GoToStart', GoToStart(),
                                         transitions = {'FindTag': 'FindTag',
@@ -942,8 +942,7 @@ def main():
                                         transitions = {'ApproachTag': 'ApproachTag',
                                                         'Done' : 'DoneProgram'})
 
-
- 
+'''
  
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')
     
@@ -954,6 +953,6 @@ def main():
     # Wait for ctrl-c to stop the application
     rospy.spin()
     sis.stop()
-\
+
 if __name__ == '__main__':
     main()
