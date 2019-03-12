@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>Run_Robot_parking</name>
+  <name>run_robot_parking</name>
   <version>0.0.0</version>
   <description>The Run_Robot_parking package</description>
 
