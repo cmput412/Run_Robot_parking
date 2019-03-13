@@ -413,8 +413,8 @@ class ScanObject(smach.State):
         
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
-        self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
-                        Image,self.image_callback)
+        #self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
+         #               Image,self.image_callback)
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
         self.button = rospy.Subscriber('/joy', Joy, self.button_callback)
@@ -433,6 +433,8 @@ class ScanObject(smach.State):
             self.end = 1
 
     def execute(self,userdata):
+        image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
+                        Image,self.image_callback)
         self.scanTime = 1
         self.lst = []
         self.found = 0
@@ -464,7 +466,8 @@ class ScanObject(smach.State):
                     rospy.sleep(0.5)
                     self.sound.publish(0)
 
-                self.scanTime = 0                
+                self.scanTime = 0  
+                image_sub.unregister()              
                 if counter == 4:
                     return 'Read'
                 return 'TurnClock'
@@ -517,8 +520,8 @@ class ReadShape(smach.State):
         smach.State.__init__(self, outcomes=['Turn180', 'TurnClock','Done'])
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
-        self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
-                        Image,self.image_callback)
+        #self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
+        #                Image,self.image_callback)
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
         self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound)
@@ -535,6 +538,8 @@ class ReadShape(smach.State):
             self.end = 1
 
     def execute(self,userdata):
+        image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
+                        Image,self.image_callback)
         global counter
         self.shape_list = list()
         rospy.sleep(1)
@@ -546,6 +551,7 @@ class ReadShape(smach.State):
         while not rospy.is_shutdown():
             if self.found:
                 self.readTime = 0
+                image_sub.unregister()
                 if counter == 4:
                     return 'Turn180'
                 return 'TurnClock'
@@ -969,8 +975,8 @@ class Waypoint(smach.State):
     def calcInitial(self):
         start = PoseWithCovarianceStamped()
         start.header.frame_id = 'map'
-        start.pose.pose.position.x = 0
-        start.pose.pose.position.y = 0
+        start.pose.pose.position.x = 0.153
+        start.pose.pose.position.y = 0.325
         start.pose.pose.position.z = 0
         start.pose.pose.orientation.x = 0
         start.pose.pose.orientation.y = 0

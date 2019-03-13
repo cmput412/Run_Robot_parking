@@ -5,6 +5,7 @@ from smach import State, StateMachine
 from sensor_msgs.msg import Joy
 from smach_ros import SimpleActionState
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
 
 ordered_waypoints = [
  ['initial', (0.887,0.5), (0.0, 0.0, 0, 1)],              #(0,0,-1,0.006) faces chairs
@@ -26,10 +27,12 @@ ordered_waypoints = [
 
 
 class Waypoint(smach.State):
-    def __init__(self, position, orientation):
+    def __init__(self, name, position, orientation):
         smach.State.__init__(self, outcomes=['success'])
         rospy.loginfo("Setting up client")
+        self.initpos = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=10)
         self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+        self.initpos = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=10)
         rospy.loginfo("ready1")
         self.client.wait_for_server()
         rospy.loginfo("ready2")
@@ -44,9 +47,14 @@ class Waypoint(smach.State):
         self.goal.target_pose.pose.orientation.z = orientation[2]
         self.goal.target_pose.pose.orientation.w = orientation[3]
         self.first = 1
+        self.name = name
 
 
     def execute(self, userdata):
+        if self.name == 'initial':
+            self.calcInitial()
+
+
         if self.first:
             self.client.send_goal(self.goal)
             self.client.wait_for_result()
@@ -54,7 +62,18 @@ class Waypoint(smach.State):
         rospy.sleep(2)
         return 'success'
 
-    
+    def calcInitial(self):
+        start = PoseWithCovarianceStamped()
+        start.header.frame_id = 'map'
+        start.pose.pose.position.x = 0.153
+        start.pose.pose.position.y = 0.325
+        start.pose.pose.position.z = 0
+        start.pose.pose.orientation.x = 0
+        start.pose.pose.orientation.y = 0
+        start.pose.pose.orientation.z = 0
+        start.pose.pose.orientation.w = 1
+        self.initpos.publish(start)
+        rospy.sleep(1)
 
 def main():
     rospy.init_node('goal')
@@ -67,7 +86,7 @@ def main():
     
     with sm:
         for i, w in enumerate(ordered_waypoints):
-            StateMachine.add(w[0], Waypoint(w[1], w[2]),transitions={'success':ordered_waypoints[(i + 1) %  len(ordered_waypoints)][0]})
+            StateMachine.add(w[0], Waypoint(w[0], w[1], w[2]),transitions={'success':ordered_waypoints[(i + 1) %  len(ordered_waypoints)][0]})
 
     sm.execute() 
 
