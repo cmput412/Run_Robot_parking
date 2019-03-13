@@ -15,7 +15,7 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 
 
 numpy.set_printoptions(threshold=numpy.nan)
-counter = 0
+counter = 5
 gshape = "square"
 ar_tag = 4
 random = 'seven'
@@ -232,12 +232,24 @@ class StopState(smach.State):
         rospy.loginfo('Executing Stop state')
         self.twist = Twist()
         while not rospy.is_shutdown():
+            
             time = rospy.Time.now() + rospy.Duration(2)
             while rospy.Time.now() < time:
                 self.twist.linear.x = 0
                 self.cmd_vel_pub.publish(self.twist)
                 if self.end:
                     return 'Done'
+
+            if counter == 5:
+                self.twist.angular.z = 0.2
+                self.cmd_vel_pub.publish(self.twist)
+                rospy.sleep(2)
+                self.twist.angular.z = -0.2
+                self.cmd_vel_pub.publish(self.twist)
+                rospy.sleep(2)
+                self.twist.angular.z = 0
+                self.cmd_vel_pub.publish(self.twist)
+
             self.twist.linear.x = 0.3
             self.cmd_vel_pub.publish(self.twist)
             rospy.sleep(.5)
