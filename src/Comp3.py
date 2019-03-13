@@ -47,11 +47,11 @@ class SleepState(smach.State):
 
 class LineFollow(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['Scan', 'TurnCounter','TurnClock','Stop','Done', 'GoToParkingStart'])
+        smach.State.__init__(self, outcomes=['Scan', 'TurnCounter','TurnClock','Stop','Done'])# 'GoToParkingStart'])
         self.bridge = cv_bridge.CvBridge()
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
-        self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
+        self.image_sub = rospy.Subscriber('usb_cam/image_raw',   
                         Image,self.image_callback)
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
@@ -133,12 +133,12 @@ class LineFollow(smach.State):
         self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
         hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
 
-        lower_white = numpy.array([220,220,220])#[186,186,186])         # set upper and lower range for white mask
-        upper_white = numpy.array([255,255,255])#[255,255,255])
+        lower_white = numpy.array([180,170,170])#[186,186,186])    [180,180,180] [220,220,220]    # set upper and lower range for white mask
+        upper_white = numpy.array([255,255,255])#[255,255,255]) [255,255,255]
         whitemask = cv2.inRange(self.image,lower_white,upper_white)
 
-        lower_red = numpy.array([120,150,150])                          # set upper and lower range for red mask
-        upper_red = numpy.array([180,255,255])
+        lower_red = numpy.array([120,130,130]) # [120,150,150]                          # set upper and lower range for red mask
+        upper_red = numpy.array([180,255,255]) # [180,255,255]
         redmask = cv2.inRange(hsv,lower_red,upper_red)
 
   
@@ -162,10 +162,12 @@ class LineFollow(smach.State):
             self.cmd_vel_pub.publish(self.twist)
 
         elif self.M['m00'] > 0 and self.stop == 0:
+            rospy.loginfo("Line found")
             self.noLine = 0
             self.PID_Controller(w)
 
         else:
+            rospy.loginfo("no line")
             if self.noLine == 0:
                 self.t1 = rospy.Time.now() + rospy.Duration(2)
                 self.noLine = 1
@@ -192,7 +194,7 @@ class LineFollow(smach.State):
         derivative = (err-prev_err) / dt
         prev_err = err
         output = (err * Kp) + (integral * Ki) + (derivative * Kd)
-        self.twist.linear.x = 0.6
+        self.twist.linear.x = 0.3
         self.twist.angular.z =  -output
         self.cmd_vel_pub.publish(self.twist)
 
@@ -426,12 +428,12 @@ class ScanObject(smach.State):
                     self.val += 1
                 if self.val == 1:
                     rospy.loginfo('here1')
-                    self.led1.publish(1)
+                    self.led2.publish(1)
                     self.sound.publish(0)
 
                 elif self.val == 2:
                     rospy.loginfo('here2')
-                    self.led2.publish(1)
+                    self.led1.publish(1)
                     self.sound.publish(0)
                     rospy.sleep(0.5)
                     self.sound.publish(0)
@@ -893,7 +895,7 @@ def main():
                                                         'TurnCounter': 'Turn90CounterClockwise',
                                                         'TurnClock': 'Turn90Clockwise',
                                                         'Stop': 'StopState',
-                                                        'GoToParkingStart' :  'GoToStart',
+                                                        #'GoToParkingStart' :  'GoToStart',
                                                         'Done' : 'DoneProgram'})
 
         smach.StateMachine.add('StopState', StopState(),
@@ -924,26 +926,23 @@ def main():
                                         transitions = { 'Turn180': 'Turn180',
                                                         'TurnClock': 'Turn90Clockwise',
                                                         'Done' : 'DoneProgram'})
-'''
-        #AR tag-related states and transitions 
-        smach.StateMachine.add('GoToStart', GoToStart(),
-                                        transitions = {'FindTag': 'FindTag',
-                                                        'Done' : 'DoneProgram'})
 
-        smach.StateMachine.add('GoToWayPointAR', GoToWayPointAR(),
-                                        transitions = {'GoToWayPoint': 'GoToWayPoint',
-                                                        'Done' : 'DoneProgram'})
-
-        smach.StateMachine.add('ApproachTag', ApproachTag(),
-                                        transitions = {'GoToWayPointAR': 'GoToWayPointAR',
-                                                        'Done' : 'DoneProgram'})
-
-        smach.StateMachine.add('FindTag', FindTag(),
-                                        transitions = {'ApproachTag': 'ApproachTag',
-                                                        'Done' : 'DoneProgram'})
-
-'''
- 
+    #    #AR tag-related states and transitions 
+   #     smach.StateMachine.add('GoToStart', GoToStart(),
+  #                                      transitions = {'FindTag': 'FindTag',
+ #                                                       'Done' : 'DoneProgram'})
+#
+   #     smach.StateMachine.add('GoToWayPointAR', GoToWayPointAR(),
+  #                                      transitions = {'GoToWayPoint': 'GoToWayPoint',
+ #                                                       'Done' : 'DoneProgram'})
+#
+   #     smach.StateMachine.add('ApproachTag', ApproachTag(),
+  #                                      transitions = {'GoToWayPointAR': 'GoToWayPointAR',
+ #                                                       'Done' : 'DoneProgram'})
+#
+ #       smach.StateMachine.add('FindTag', FindTag(),
+ #                                       transitions = {'ApproachTag': 'ApproachTag',
+ #                                                       'Done' : 'DoneProgram'})
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')
     
 
