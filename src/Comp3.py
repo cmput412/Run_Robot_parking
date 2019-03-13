@@ -1,21 +1,36 @@
 #!/usr/bin/env python
 import rospy, cv2, cv_bridge, numpy, smach, smach_ros, time, math, actionlib, tf, imutils
-
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
 from sensor_msgs.msg import LaserScan, Joy, Image
 from nav_msgs.msg import Odometry
 from kobuki_msgs.msg import Led, BumperEvent, Sound
 from ar_track_alvar_msgs.msg import AlvarMarkers
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-
+from smach_ros import SimpleActionState
 from skimage import filters, morphology, measure
 from shapedetector import ShapeDetector
 from math import copysign
+from smach import State, StateMachine
 
 
 numpy.set_printoptions(threshold=numpy.nan)
 counter = 0
 gshape = "square"
+
+ordered_waypoints = [
+ ['initial', (0.887,0.5), (0.0, 0.0, 0, 1)],              #(0,0,-1,0.006) faces chairs
+ ['zero',(1.35,-0.15), (0.0, 0.0, -0.731, .682)],      #(0, 0,.6935,.7203) faces door
+ ['one', (0.83,-0.872),  (0,0,-1,0.006)],             #(0.0, 0.0, 0, 1) faces window
+ ['two', (0.955, -1.88),  (0.0, 0.0, -0.731, .682)],   # (0.955, -1.78) #(0.0, 0.0, -0.731, .682) faces wall
+ ['three',(1.78, -1.75),  (0.0, 0.0, -0.731, .682)],  #(1.68, -1.75)  
+ ['four', (2.47, -1.7),  (0.0, 0.0, -0.731, .682)],
+ ['five', (3.21, -1.69),  (0.0, 0.0, -0.731, .682)],   #(3.21, -1.63)
+ ['six', (3.9, -1.71),  (0.0, 0.0, -0.731, .682)],
+ ['seven',(2.73, -0.502),  (0, 0,.6935,.7203)],     #(2.73, -0.582)
+ ['eight', (1.9, -0.655),  (0, 0,.6935,.7203)],
+ ['exit', (3.35, -1.38),  (0.0, 0.0, 0, 1)],
+ ['end', (3.85, -0.09),  (0, 0,.6935,.7203)]
+]
 
 class SleepState(smach.State):
     def __init__(self):
@@ -87,20 +102,15 @@ class LineFollow(smach.State):
 
                     return 'TurnCounter'
 
-                elif counter == 1 or counter == 6:
+                elif counter == 1 or counter == 5 or counter == 6:
                     #just stop for a moment
                     counter += 1
-                    rospy.sleep(0.5)
+                    rospy.sleep(0.3)
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
 
                     return 'Stop'
 
-                elif counter == 5:
-                    #go to the parking lot
-                    counter += 1
-                    
-                    return 'GoToParkingStart'
 
 
                 elif counter == 10:
@@ -111,7 +121,7 @@ class LineFollow(smach.State):
 
                     return 'Stop'
 
-            elif self.noLine == 2:
+            elif self.noLine == 2 and (counter < 6):
                 counter += 1
                 self.twist.linear.x = 0.2
                 self.cmd_vel_pub.publish(self.twist)
@@ -201,7 +211,7 @@ class LineFollow(smach.State):
 
 class StopState(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['Line','Done'])
+        smach.State.__init__(self, outcomes=['Line','Waypoint','Done'])
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
         self.button = rospy.Subscriber('/joy', Joy, self.button_callback)
@@ -226,6 +236,8 @@ class StopState(smach.State):
             self.twist.linear.x = 0.3
             self.cmd_vel_pub.publish(self.twist)
             rospy.sleep(.5)
+            if counter == 6:
+                return 'Waypoint'
             return 'Line'
         return 'Done'
 
@@ -290,7 +302,7 @@ class Turn90CounterClockwise(smach.State):
         self.end = 0
         self.twist = Twist()
         self.speed = 45
-        self.angle = 90
+        self.angle = 105
         self.angular_speed = self.speed*2*math.pi/360
         self.relative_angle = self.angle*2.3*math.pi/360
         self.mult = 1.2
@@ -872,6 +884,58 @@ class ApproachTag(smach.State):
 #class GoToWayPoint(smach.state):
 #    def __init__():
 #	pass
+class Waypoint(smach.State):
+    def __init__(self, name, position, orientation):
+        smach.State.__init__(self, outcomes=['success','Line'])
+        rospy.loginfo("Setting up client")
+        self.initpos = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=10)
+        self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+        rospy.loginfo("ready1")
+        self.client.wait_for_server()
+        rospy.loginfo("ready2")
+        self.name = name
+        self.goal = MoveBaseGoal()
+        self.goal.target_pose.header.frame_id = 'map'
+        self.goal.target_pose.pose.position.x = position[0]
+        self.goal.target_pose.pose.position.y = position[1]
+        self.goal.target_pose.pose.position.z = 0
+        self.goal.target_pose.pose.orientation.x = orientation[0]
+        self.goal.target_pose.pose.orientation.y = orientation[1]
+        self.goal.target_pose.pose.orientation.z = orientation[2]
+        self.goal.target_pose.pose.orientation.w = orientation[3]
+        self.first = 1
+
+
+    def execute(self, userdata):
+        global counter
+        if self.name == 'initial':
+            self.calcInitial()
+
+        if self.first:
+            self.client.send_goal(self.goal)
+            self.client.wait_for_result()
+            self.first =0
+        rospy.sleep(2)
+        if self.name == 'end':
+            counter += 1
+            return 'Line'
+        else:
+            return 'success'
+
+    def calcInitial(self):
+        start = PoseWithCovarianceStamped()
+        start.header.frame_id = 'map'
+        start.pose.pose.position.x = 0
+        start.pose.pose.position.y = 0
+        start.pose.pose.position.z = 0
+        start.pose.pose.orientation.x = 0
+        start.pose.pose.orientation.y = 0
+        start.pose.pose.orientation.z = 0
+        start.pose.pose.orientation.w = 1
+        self.initpos.publish(start)
+        rospy.sleep(1)
+
+
 	
         
 
@@ -900,7 +964,7 @@ def main():
 
         smach.StateMachine.add('StopState', StopState(),
                                         transitions = {'Line': 'LineFollow',
-
+                                                        'Waypoint':'initial',
                                                         'Done' : 'DoneProgram'})
 
         smach.StateMachine.add('Turn90Clockwise', Turn90Clockwise(),
@@ -910,7 +974,7 @@ def main():
         smach.StateMachine.add('Turn90CounterClockwise', Turn90CounterClockwise(),
                                         transitions = { 'Read': 'ReadShape',
                                                         'Scan': 'ScanObject',
-                                                        'Line': 'LineFollow',
+                                                        'Line': 'LineFollow',       
                                                         'Done' : 'DoneProgram'})
 
         smach.StateMachine.add('Turn180', Turn180(),
@@ -926,6 +990,11 @@ def main():
                                         transitions = { 'Turn180': 'Turn180',
                                                         'TurnClock': 'Turn90Clockwise',
                                                         'Done' : 'DoneProgram'})
+        for i, w in enumerate(ordered_waypoints):
+            StateMachine.add(w[0], Waypoint(w[0], w[1], w[2]),transitions={'success':ordered_waypoints[(i + 1) %  len(ordered_waypoints)][0],
+                                                                      'Line': 'LineFollow'})
+
+
 
     #    #AR tag-related states and transitions 
    #     smach.StateMachine.add('GoToStart', GoToStart(),
