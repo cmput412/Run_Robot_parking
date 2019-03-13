@@ -11,11 +11,16 @@ from skimage import filters, morphology, measure
 from shapedetector import ShapeDetector
 from math import copysign
 from smach import State, StateMachine
+from ar_track_alvar_msgs.msg import AlvarMarkers
 
 
 numpy.set_printoptions(threshold=numpy.nan)
 counter = 0
 gshape = "square"
+ar_tag = 4
+random = 'seven'
+
+objectives = ["random", "ar_tag", "shape"]
 
 ordered_waypoints = [
  ['initial', (0.887,0.5), (0.0, 0.0, 0, 1)],              #(0,0,-1,0.006) faces chairs
@@ -123,9 +128,9 @@ class LineFollow(smach.State):
 
             elif self.noLine == 2 and (counter < 6):
                 counter += 1
-                self.twist.linear.x = 0.2
+                self.twist.linear.x = -.2
                 self.cmd_vel_pub.publish(self.twist)
-                rospy.sleep(0.2)
+                rospy.sleep(1)
                 self.twist = Twist()
                 self.cmd_vel_pub.publish(self.twist)
 
@@ -886,9 +891,11 @@ class ApproachTag(smach.State):
 #	pass
 class Waypoint(smach.State):
     def __init__(self, name, position, orientation):
-        smach.State.__init__(self, outcomes=['success','Line'])
+        smach.State.__init__(self, outcomes=['success','Line', 'exit'])
         rospy.loginfo("Setting up client")
         self.initpos = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=10)
+        #self.alvar_sub = rospy.Subscriber('ar_pose_marker',AlvarMarkers)
+        #self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo("ready1")
         self.client.wait_for_server()
@@ -904,23 +911,60 @@ class Waypoint(smach.State):
         self.goal.target_pose.pose.orientation.z = orientation[2]
         self.goal.target_pose.pose.orientation.w = orientation[3]
         self.first = 1
+        self.found = 0
+        self.markerid = None
+        self.readTime = 0
+        self.tagTime = 0
 
 
     def execute(self, userdata):
-        global counter
-        if self.name == 'initial':
-            self.calcInitial()
+        global counter, objectives, random
+        self.first = 1
+        self.readTime = 0
+        self.found = 0
+        while not rospy.is_shutdown():
+            # set initial position on map
+            if self.name == 'initial':
+                self.calcInitial()
 
-        if self.first:
-            self.client.send_goal(self.goal)
-            self.client.wait_for_result()
-            self.first =0
-        rospy.sleep(2)
-        if self.name == 'end':
-            counter += 1
-            return 'Line'
-        else:
-            return 'success'
+            # shape detection is only one that may take a while
+            # so if have to do shape detection wait until its finished 
+            #if 'shape' not in objectives:
+             #   self.found = 1
+
+
+            # goto goal
+            if self.first:
+                self.client.send_goal(self.goal)
+                self.client.wait_for_result()
+                self.first =0
+
+            # start reading shape and ar tag
+            #self.readTime = 1
+            # if in random selected waypoint 
+           # if self.name == random:
+           #     objectives.remove('random')
+           #     self.led1.publish(4)
+
+            # sleep to allow shape and ar to process
+            rospy.sleep(2)
+
+
+            # if at last waypoint goto line follow
+            if self.name == 'end':
+                counter += 1
+                self.readTime = 0
+                return 'Line'
+
+           # elif len(objectives) == 0:
+           #     self.readTime = 0
+           #     return 'exit'
+
+            # if not at last goto next waypoint
+            else:
+                self.readTime = 0
+                return 'success'
+        return 'Done'
 
     def calcInitial(self):
         start = PoseWithCovarianceStamped()
@@ -934,6 +978,56 @@ class Waypoint(smach.State):
         start.pose.pose.orientation.w = 1
         self.initpos.publish(start)
         rospy.sleep(1)
+
+    # if still have to find shape listen to callback when at waypoint
+    # if shape found remove 'shape' from objectives list
+    '''
+    def image_callback(self, msg):
+        global gshape, objectives
+        if self.readTime and 'shape' in objectives:
+            self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+            hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)  
+            mask = self.threshold_hsv_360(140,10,10,255,255,120,hsv)       
+            ret, thresh = cv2.threshold(mask, 127, 255, 0)
+            im2, cnts, hierarchy = cv2.findContours(thresh,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(mask, cnts, -1, (0,255,0), 3)
+            sd = ShapeDetector()
+            shape = None
+            for c in cnts:
+                shape = sd.detect(c)
+                if shape != None:
+                    self.shape_list.append(shape)            
+            if len(self.shape_list) >= 20:
+                shape =  max(set(self.shape_list), key=self.shape_list.count)
+                if gshape == shape:
+                    self.led1.publish(3)
+                    self.sound.publish(6)  
+                    rospy.loginfo(shape)
+                    objectives.remove('shape')
+                self.found = 1
+                
+    def threshold_hsv_360(self,s_min, v_min, h_max, s_max, v_max, h_min, hsv):
+        lower_color_range_0 = numpy.array([0, s_min, v_min],dtype=float)
+        upper_color_range_0 = numpy.array([h_max/2., s_max, v_max],dtype=float)
+        lower_color_range_360 = numpy.array([h_min/2., s_min, v_min],dtype=float)
+        upper_color_range_360 = numpy.array([360/2., s_max, v_max],dtype=float)
+        mask0 = cv2.inRange(hsv, lower_color_range_0, upper_color_range_0)
+        mask360 = cv2.inRange(hsv, lower_color_range_360, upper_color_range_360)
+        mask = mask0 | mask360
+        return mask
+
+
+    def alvarCallback(self, msg):
+        global ar_tag, objectives
+        if self.readTime and 'ar_tag' in objectives:
+            try:
+                #rospy.loginfo(msg.markers[0].id)
+                marker = msg.markers[0]
+                if ar_tag == marker.id:
+                    objectives.remove('ar_tag')
+                    self.led1.publish(3)
+            except:
+                pass'''
 
 
 	
@@ -992,7 +1086,8 @@ def main():
                                                         'Done' : 'DoneProgram'})
         for i, w in enumerate(ordered_waypoints):
             StateMachine.add(w[0], Waypoint(w[0], w[1], w[2]),transitions={'success':ordered_waypoints[(i + 1) %  len(ordered_waypoints)][0],
-                                                                      'Line': 'LineFollow'})
+                                                                      'Line': 'LineFollow',
+                                                                      'exit': ordered_waypoints[10][0]})
 
 
 
