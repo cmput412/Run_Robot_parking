@@ -15,10 +15,9 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 
 
 numpy.set_printoptions(threshold=numpy.nan)
-counter = 5
+counter = 0
 gshape = "square"
-ar_tag = 4
-random = 'seven'
+random = 'six'
 
 objectives = ["random", "ar_tag", "shape"]
 
@@ -34,7 +33,7 @@ ordered_waypoints = [
  ['seven',(2.73, -0.502),  (0, 0,.6935,.7203)],     #(2.73, -0.582)
  ['eight', (1.9, -0.655),  (0, 0,.6935,.7203)],
  ['exit', (3.35, -1.38),  (0.0, 0.0, 0, 1)],
- ['end', (3.85, -0.09),  (0, 0,.6935,.7203)]
+ ['end', (3.85, 0.1),  (0, 0,.6935,.7203)]
 ]
 
 class SleepState(smach.State):
@@ -85,9 +84,11 @@ class LineFollow(smach.State):
         self.image = None
         self.noLine = 0
         self.t1 = None
+        self.time = 0
 
     def execute(self, userdata):
         global counter
+        self.time = 1
         rospy.loginfo('Executing Line Follow state')
         self.stop = 0 
         self.twist = Twist()
@@ -107,14 +108,22 @@ class LineFollow(smach.State):
 
                     return 'TurnCounter'
 
-                elif counter == 1 or counter == 5 or counter == 6:
+                elif counter == 1 or counter == 6:
                     #just stop for a moment
                     counter += 1
                     rospy.sleep(0.3)
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
-
                     return 'Stop'
+
+                elif counter == 5:
+                    counter += 1
+                    rospy.sleep(0.3)
+                    self.twist = Twist()
+                    self.cmd_vel_pub.publish(self.twist)
+                    self.time = 0
+                    return 'Stop'
+
 
 
 
@@ -123,7 +132,7 @@ class LineFollow(smach.State):
                     rospy.sleep(1)
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
-
+                    
                     return 'Stop'
 
             elif self.noLine == 2 and (counter < 6):
@@ -138,6 +147,16 @@ class LineFollow(smach.State):
 
         return 'Done'
 
+    def threshold_hsv_360(self,s_min, v_min, h_max, s_max, v_max, h_min, hsv):
+        lower_color_range_0 = numpy.array([0, s_min, v_min],dtype=float)
+        upper_color_range_0 = numpy.array([h_max/2., s_max, v_max],dtype=float)
+        lower_color_range_360 = numpy.array([h_min/2., s_min, v_min],dtype=float)
+        upper_color_range_360 = numpy.array([360/2., s_max, v_max],dtype=float)
+        mask0 = cv2.inRange(hsv, lower_color_range_0, upper_color_range_0)
+        mask360 = cv2.inRange(hsv, lower_color_range_360, upper_color_range_360)
+        mask = mask0 | mask360
+        return mask
+
     def button_callback(self,msg):
         rospy.loginfo('in callback')
         if msg.buttons[1] == 1:
@@ -145,52 +164,55 @@ class LineFollow(smach.State):
 
     def image_callback(self, msg):
         global counter
-        self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
-        hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
+        if self.time:
+            self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
+            hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
 
-        lower_white = numpy.array([180,170,170])#[186,186,186])    [180,180,180] [220,220,220]    # set upper and lower range for white mask
-        upper_white = numpy.array([255,255,255])#[255,255,255]) [255,255,255]
-        whitemask = cv2.inRange(self.image,lower_white,upper_white)
+            lower_white = numpy.array([180,170,170])#[186,186,186])    [180,180,180] [220,220,220]    # set upper and lower range for white mask
+            upper_white = numpy.array([255,255,255])#[255,255,255]) [255,255,255]
+            whitemask = cv2.inRange(self.image,lower_white,upper_white)
 
-        lower_red = numpy.array([120,130,130]) # [120,150,150]                          # set upper and lower range for red mask
-        upper_red = numpy.array([180,255,255]) # [180,255,255]
-        redmask = cv2.inRange(hsv,lower_red,upper_red)
 
-  
-        h, w, d =self.image.shape
-        search_top = 3*h/4
-        search_bot = search_top + 20
+            redmask = self.threshold_hsv_360(70,70,320,255,255,20,hsv)
+            #lower_red = numpy.array([120,130,130]) # [120,150,150]                          # set upper and lower range for red mask
+            #upper_red = numpy.array([180,255,255]) # [180,255,255]
+            #redmask = cv2.inRange(hsv,lower_red,upper_red)
 
-        whitemask[0:search_top, 0:w] = 0                                # search for white color
-        whitemask[search_bot:h, 0:w] = 0
+      
+            h, w, d =self.image.shape
+            search_top = 3*h/4
+            search_bot = search_top + 20
 
-        redmask[0:search_top, 0:w] = 0                                  # search for red color
-        redmask[search_bot:h, 0:w] = 0
+            whitemask[0:search_top, 0:w] = 0                                # search for white color
+            whitemask[search_bot:h, 0:w] = 0
 
-        self.M = cv2.moments(whitemask)
-        self.RM = cv2.moments(redmask)
+            redmask[0:search_top, 0:w] = 0                                  # search for red color
+            redmask[search_bot:h, 0:w] = 0
 
-        if self.RM['m00'] > 0:
-            self.noLine = 0
-            self.stop = 1
-            self.twist.linear.x = 0.3
-            self.cmd_vel_pub.publish(self.twist)
+            self.M = cv2.moments(whitemask)
+            self.RM = cv2.moments(redmask)
 
-        elif self.M['m00'] > 0 and self.stop == 0:
-            rospy.loginfo("Line found")
-            self.noLine = 0
-            self.PID_Controller(w)
+            if self.RM['m00'] > 0:
+                self.noLine = 0
+                self.stop = 1
+                self.twist.linear.x = 0.3
+                self.cmd_vel_pub.publish(self.twist)
 
-        else:
-            rospy.loginfo("no line")
-            if self.noLine == 0:
-                self.t1 = rospy.Time.now() + rospy.Duration(2)
-                self.noLine = 1
-            elif self.noLine == 1 and (self.t1 <= rospy.Time.now()):
-                self.noLine = 2
+            elif self.M['m00'] > 0 and self.stop == 0:
+                #rospy.loginfo("Line found")
+                self.noLine = 0
+                self.PID_Controller(w)
 
-        cv2.imshow("window", self.image)
-        cv2.waitKey(3)
+            else:
+                #rospy.loginfo("no line")
+                if self.noLine == 0:
+                    self.t1 = rospy.Time.now() + rospy.Duration(2)
+                    self.noLine = 1
+                elif self.noLine == 1 and (self.t1 <= rospy.Time.now()):
+                    self.noLine = 2
+
+            cv2.imshow("window", self.image)
+            cv2.waitKey(3)
 
     def PID_Controller(self,w):
 
@@ -204,7 +226,7 @@ class LineFollow(smach.State):
         err = cx - w/2
         Kp = .0035 
         Ki = 0
-        Kd = .001
+        Kd = .002
         integral = integral + err * dt
         derivative = (err-prev_err) / dt
         prev_err = err
@@ -240,15 +262,7 @@ class StopState(smach.State):
                 if self.end:
                     return 'Done'
 
-            if counter == 5:
-                self.twist.angular.z = 0.2
-                self.cmd_vel_pub.publish(self.twist)
-                rospy.sleep(2)
-                self.twist.angular.z = -0.2
-                self.cmd_vel_pub.publish(self.twist)
-                rospy.sleep(2)
-                self.twist.angular.z = 0
-                self.cmd_vel_pub.publish(self.twist)
+            
 
             self.twist.linear.x = 0.3
             self.cmd_vel_pub.publish(self.twist)
@@ -430,7 +444,7 @@ class ScanObject(smach.State):
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
         self.button = rospy.Subscriber('/joy', Joy, self.button_callback)
-        self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound)
+        self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size = 1)
 
         self.bridge = cv_bridge.CvBridge()
         self.val = None
@@ -499,14 +513,25 @@ class ScanObject(smach.State):
             im2, cnts, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(redmask, cnts, -1, (0,255,0), 3)
 
-            img = measure.label(redmask, background=0)
-            img += 1
-            propsa = measure.regionprops(img.astype(int))
-            length = len(propsa)
+            num = 0
+            for c in cnts:
 
-            self.lst.append(length-1)
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, .04 * peri, True)
 
-            if len(self.lst) > 7:
+                if cv2.contourArea(c) > 7000: 
+                    num +=1
+
+
+            rospy.loginfo(num)
+            #img = measure.label(redmask, background=0)
+            #img += 1
+            #propsa = measure.regionprops(img.astype(int))
+            #length = len(propsa)
+
+            self.lst.append(num)
+
+            if len(self.lst) > 15:
                 self.val = self.lst[-1]
                 self.found = 1
 
@@ -515,6 +540,7 @@ class ScanObject(smach.State):
         #self.avg = self.grouping/self.i
         #cv2.imshow("window", redmask)
         #cv2.waitKey(3)
+
         
 
     def threshold_hsv_360(self,s_min, v_min, h_max, s_max, v_max, h_min, hsv):
@@ -536,7 +562,7 @@ class ReadShape(smach.State):
         #                Image,self.image_callback)
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
-        self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound)
+        self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
 
         self.button = rospy.Subscriber('/joy', Joy, self.button_callback)
         self.bridge = cv_bridge.CvBridge()
@@ -823,84 +849,6 @@ class FindTag(smach.State):
     def odomCallback(self, msg):
         self.pose = msg.pose.pose
 
-class ApproachTag(smach.State):
-    def __init__(self):
-
-        smach.State.__init__(self, outcomes=['GoToWayPointAR','Done'])
-        self.cmd_vel_pub = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=5)
-
-        self.move_cmd = Twist()
-        
-        # Set flag to indicate when the AR marker is visible
-        self.target_visible = False
-        self.current_marker = None
-        self.found = 0
-        self.success = 0
-        self.now = 0
-        self.look_for_marker = 1
-
-        rospy.wait_for_message('ar_pose_marker',AlvarMarkers)
-        rospy.loginfo("here4")
-        rospy.Subscriber('ar_pose_marker', AlvarMarkers, self.set_cmd_vel)
-        
-
-    def execute(self,userdata):
-
-        rospy.loginfo("Executing State ApproachTag")
-        
-        while not rospy.is_shutdown():
-            self.now = 1
-            self.move_cmd = Twist()
-            self.success = 0
-            while self.success == 0:
-                self.cmd_vel_pub.publish(self.move_cmd)
-            self.now = 0
-            return 'GoToWayPointAR'
-        return 'Done'
-
-
-    def set_cmd_vel(self,msg):
-        if self.now:
-            try: 
-                marker = msg.markers[0]
-                self.current_marker = marker.id
-                if not self.target_visible:
-                        rospy.loginfo("FOLLOWER is Tracking Target!")
-                self.target_visible = True
-
-            except:
-                    self.move_cmd.linear.x /= 1.5
-                    self.move_cmd.angular.z /= 1.5
-                        
-                    if self.target_visible:
-                        rospy.loginfo("FOLLOWER LOST Target!")
-                    self.target_visible = False
-
-                    return 
-
-            # Get the displacement of the marker relative to the base
-            target_offset_y = marker.pose.pose.position.y
-            # Get the distance of the marker from the base
-            target_offset_x = marker.pose.pose.position.x
-
-            # keep ar tag in centre
-            if target_offset_y > 0.1:
-                speed = 0.2
-            elif target_offset_y < -0.1:
-                speed = -0.2
-            else:
-                speed = 0
-            self.move_cmd.angular.z = speed
-
-            if target_offset_x > 0.7:
-                speed = 0.2
-                if speed <0:
-                    speed *= 1.5
-            else:
-                speed = 0
-                self.success = 1
-
-            self.move_cmd.linear.x = speed
 
     ### Go to Predetermined Waypoint ###
 
@@ -912,8 +860,8 @@ class Waypoint(smach.State):
         smach.State.__init__(self, outcomes=['success','Line', 'exit'])
         rospy.loginfo("Setting up client")
         self.initpos = rospy.Publisher('/initialpose', PoseWithCovarianceStamped, queue_size=10)
-        #self.alvar_sub = rospy.Subscriber('ar_pose_marker',AlvarMarkers)
-        #self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
+
+        self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo("ready1")
         self.client.wait_for_server()
@@ -937,6 +885,9 @@ class Waypoint(smach.State):
 
     def execute(self, userdata):
         global counter, objectives, random
+        alvar_sub = rospy.Subscriber('ar_pose_marker',AlvarMarkers)
+        image_sub = rospy.Subscriber('camera/rgb/image_raw',   
+                        Image,self.image_callback)
         self.first = 1
         self.readTime = 0
         self.found = 0
@@ -947,8 +898,8 @@ class Waypoint(smach.State):
 
             # shape detection is only one that may take a while
             # so if have to do shape detection wait until its finished 
-            #if 'shape' not in objectives:
-             #   self.found = 1
+            if 'shape' not in objectives:
+                self.found = 1
 
 
             # goto goal
@@ -959,24 +910,28 @@ class Waypoint(smach.State):
 
             # start reading shape and ar tag
             #self.readTime = 1
-            # if in random selected waypoint 
-           # if self.name == random:
-           #     objectives.remove('random')
-           #     self.led1.publish(4)
+            #if in random selected waypoint 
+            if self.name == random:
+                objectives.remove('random')
+                self.led1.publish(4)
+                rospy.sleep(1)
+                self.led1.publish(0)
 
             # sleep to allow shape and ar to process
             rospy.sleep(2)
 
 
             # if at last waypoint goto line follow
+            image_sub.unregister()
+            alvar_sub.unregister()
             if self.name == 'end':
                 counter += 1
                 self.readTime = 0
                 return 'Line'
 
-           # elif len(objectives) == 0:
-           #     self.readTime = 0
-           #     return 'exit'
+            elif len(objectives) == 0:
+                self.readTime = 0
+                return 'exit'
 
             # if not at last goto next waypoint
             else:
@@ -995,11 +950,23 @@ class Waypoint(smach.State):
         start.pose.pose.orientation.z = 0
         start.pose.pose.orientation.w = 1
         self.initpos.publish(start)
-        rospy.sleep(1)
+        rospy.sleep(3)
+        rospy.loginfo("before")
+        self.cmd_vel_pub = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=5)
+        twist = Twist()
+        twist.angular.z = 0.4
+        self.cmd_vel_pub.publish(twist)                
+        rospy.sleep(2)
+        twist.angular.z = -0.4
+        self.cmd_vel_pub.publish(twist)
+        rospy.sleep(2)
+        twist.angular.z = 0
+        self.cmd_vel_pub.publish(twist)
+        rospy.loginfo("after")
 
     # if still have to find shape listen to callback when at waypoint
     # if shape found remove 'shape' from objectives list
-    '''
+    
     def image_callback(self, msg):
         global gshape, objectives
         if self.readTime and 'shape' in objectives:
@@ -1018,10 +985,11 @@ class Waypoint(smach.State):
             if len(self.shape_list) >= 20:
                 shape =  max(set(self.shape_list), key=self.shape_list.count)
                 if gshape == shape:
-                    self.led1.publish(3)
-                    self.sound.publish(6)  
+                    self.led1.publish(3) 
                     rospy.loginfo(shape)
                     objectives.remove('shape')
+                    rospy.sleep(1)
+                    self.led1.publish(0)
                 self.found = 1
                 
     def threshold_hsv_360(self,s_min, v_min, h_max, s_max, v_max, h_min, hsv):
@@ -1041,11 +1009,14 @@ class Waypoint(smach.State):
             try:
                 #rospy.loginfo(msg.markers[0].id)
                 marker = msg.markers[0]
-                if ar_tag == marker.id:
+                if marker.id != 0:
                     objectives.remove('ar_tag')
-                    self.led1.publish(3)
+                    self.led1.publish(1)
+
+                    rospy.sleep(1)
+                    self.led1.publish(0)
             except:
-                pass'''
+                pass
 
 
 	
