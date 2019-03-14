@@ -15,7 +15,7 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 
 
 numpy.set_printoptions(threshold=numpy.nan)
-counter = 0
+counter = 5
 gshape = "square"
 random = 'six'
 
@@ -173,7 +173,7 @@ class LineFollow(smach.State):
             whitemask = cv2.inRange(self.image,lower_white,upper_white)
 
 
-            redmask = self.threshold_hsv_360(70,70,320,255,255,20,hsv)
+            redmask = self.threshold_hsv_360(110,110,320,255,255,20,hsv)
             #lower_red = numpy.array([120,130,130]) # [120,150,150]                          # set upper and lower range for red mask
             #upper_red = numpy.array([180,255,255]) # [180,255,255]
             #redmask = cv2.inRange(hsv,lower_red,upper_red)
@@ -193,6 +193,9 @@ class LineFollow(smach.State):
             self.RM = cv2.moments(redmask)
 
             if self.RM['m00'] > 0:
+                cx = int(self.RM['m10']/self.RM['m00'])
+                cy = int(self.RM['m01']/self.RM['m00'])
+                cv2.circle(self.image, (cx, cy), 20, (0,255,0),-1)
                 self.noLine = 0
                 self.stop = 1
                 self.twist.linear.x = 0.3
@@ -925,7 +928,6 @@ class Waypoint(smach.State):
             image_sub.unregister()
             alvar_sub.unregister()
             if self.name == 'end':
-                counter += 1
                 self.readTime = 0
                 return 'Line'
 
@@ -954,12 +956,18 @@ class Waypoint(smach.State):
         rospy.loginfo("before")
         self.cmd_vel_pub = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=5)
         twist = Twist()
-        twist.angular.z = 0.4
-        self.cmd_vel_pub.publish(twist)                
-        rospy.sleep(2)
-        twist.angular.z = -0.4
-        self.cmd_vel_pub.publish(twist)
-        rospy.sleep(2)
+
+
+        goal = rospy.Time.now() + rospy.Duration(5)
+        while rospy.Time.now() < goal:
+            twist.angular.z = -1
+            self.cmd_vel_pub.publish(twist)   
+
+        goal = rospy.Time.now() + rospy.Duration(5)
+        while rospy.Time.now() < goal:
+            twist.angular.z = 1
+            self.cmd_vel_pub.publish(twist)   
+
         twist.angular.z = 0
         self.cmd_vel_pub.publish(twist)
         rospy.loginfo("after")
@@ -972,7 +980,7 @@ class Waypoint(smach.State):
         if self.readTime and 'shape' in objectives:
             self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
             hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)  
-            mask = self.threshold_hsv_360(140,10,10,255,255,120,hsv)       
+            mask = self.threshold_hsv_360(110,110,320,255,255,20,hsv)       
             ret, thresh = cv2.threshold(mask, 127, 255, 0)
             im2, cnts, hierarchy = cv2.findContours(thresh,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(mask, cnts, -1, (0,255,0), 3)
