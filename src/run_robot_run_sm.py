@@ -22,15 +22,15 @@ random = 'six'
 objectives = ["random", "ar_tag", "shape"]
 
 ordered_waypoints = [
- ['initial', (0.887,0.5), (0.0, 0.0, 0, 1)],              #(0,0,-1,0.006) faces chairs
- ['zero',(1.35,-0.15), (0.0, 0.0, -0.731, .682)],      #(0, 0,.6935,.7203) faces door
- ['one', (0.83,-0.872),  (0,0,-1,0.006)],             #(0.0, 0.0, 0, 1) faces window
- ['two', (0.955, -1.88),  (0.0, 0.0, -0.731, .682)],   # (0.955, -1.78) #(0.0, 0.0, -0.731, .682) faces wall
- ['three',(1.78, -1.75),  (0.0, 0.0, -0.731, .682)],  #(1.68, -1.75)  
+ ['initial', (0.887,0.5), (0.0, 0.0, 0, 1)],             
+ ['zero',(1.35,-0.15), (0.0, 0.0, -0.731, .682)],    
+ ['one', (0.83,-0.872),  (0,0,-1,0.006)],             
+ ['two', (0.955, -1.88),  (0.0, 0.0, -0.731, .682)],  
+ ['three',(1.78, -1.75),  (0.0, 0.0, -0.731, .682)],  
  ['four', (2.47, -1.7),  (0.0, 0.0, -0.731, .682)],
- ['five', (3.21, -1.69),  (0.0, 0.0, -0.731, .682)],   #(3.21, -1.63)
+ ['five', (3.21, -1.69),  (0.0, 0.0, -0.731, .682)],  
  ['six', (3.9, -1.71),  (0.0, 0.0, -0.731, .682)],
- ['seven',(2.73, -0.502),  (0, 0,.6935,.7203)],     #(2.73, -0.582)
+ ['seven',(2.73, -0.502),  (0, 0,.6935,.7203)],     
  ['eight', (1.9, -0.655),  (0, 0,.6935,.7203)],
  ['exit', (3.35, -1.38),  (0.0, 0.0, 0, 1)],
  ['end', (3.85, 0.1),  (0, 0,.6935,.7203)]
@@ -66,7 +66,7 @@ class SleepState(smach.State):
 
 class LineFollow(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['Scan', 'TurnCounter','TurnClock','Stop','Done'])# 'GoToParkingStart'])
+        smach.State.__init__(self, outcomes=['Scan', 'TurnCounter','TurnClock','Stop','Done'])
         self.bridge = cv_bridge.CvBridge()
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
@@ -109,11 +109,11 @@ class LineFollow(smach.State):
                     return 'TurnCounter'
 
                 elif counter == 1 or counter == 6:
-                    #just stop for a moment
                     counter += 1
                     rospy.sleep(0.3)
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
+
                     return 'Stop'
 
                 elif counter == 5:
@@ -122,10 +122,8 @@ class LineFollow(smach.State):
                     self.twist = Twist()
                     self.cmd_vel_pub.publish(self.twist)
                     self.time = 0
+
                     return 'Stop'
-
-
-
 
                 elif counter == 10:
                     counter = 0
@@ -168,17 +166,12 @@ class LineFollow(smach.State):
             self.image = self.bridge.imgmsg_to_cv2(msg,desired_encoding='bgr8')
             hsv = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
 
-            lower_white = numpy.array([180,170,170])#[186,186,186])    [180,180,180] [220,220,220]    # set upper and lower range for white mask
-            upper_white = numpy.array([255,255,255])#[255,255,255]) [255,255,255]
+            lower_white = numpy.array([180,170,170])# set upper and lower range for white mask
+            upper_white = numpy.array([255,255,255])
             whitemask = cv2.inRange(self.image,lower_white,upper_white)
 
-
             redmask = self.threshold_hsv_360(110,110,320,255,255,20,hsv)
-            #lower_red = numpy.array([120,130,130]) # [120,150,150]                          # set upper and lower range for red mask
-            #upper_red = numpy.array([180,255,255]) # [180,255,255]
-            #redmask = cv2.inRange(hsv,lower_red,upper_red)
 
-      
             h, w, d =self.image.shape
             search_top = 3*h/4
             search_bot = search_top + 20
@@ -202,12 +195,10 @@ class LineFollow(smach.State):
                 self.cmd_vel_pub.publish(self.twist)
 
             elif self.M['m00'] > 0 and self.stop == 0:
-                #rospy.loginfo("Line found")
                 self.noLine = 0
                 self.PID_Controller(w)
 
             else:
-                #rospy.loginfo("no line")
                 if self.noLine == 0:
                     self.t1 = rospy.Time.now() + rospy.Duration(2)
                     self.noLine = 1
@@ -264,8 +255,6 @@ class StopState(smach.State):
                 self.cmd_vel_pub.publish(self.twist)
                 if self.end:
                     return 'Done'
-
-            
 
             self.twist.linear.x = 0.3
             self.cmd_vel_pub.publish(self.twist)
@@ -357,7 +346,6 @@ class Turn90CounterClockwise(smach.State):
         if counter == 8:
             self.relative_angle = self.relative_angle * self.mult2
 
-
         rospy.loginfo('Executing Turn90 state')
         self.twist = Twist()
         self.twist.linear.x =.3
@@ -407,7 +395,6 @@ class Turn180(smach.State):
         self.angular_speed = self.speed*2*math.pi/360
         self.relative_angle = self.angle*2.6*math.pi/360
 
-
     def button_callback(self,msg):
         rospy.loginfo('in callback')
         if msg.buttons[1] == 1:
@@ -442,8 +429,6 @@ class ScanObject(smach.State):
         
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
-        #self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
-         #               Image,self.image_callback)
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
         self.button = rospy.Subscriber('/joy', Joy, self.button_callback)
@@ -475,18 +460,15 @@ class ScanObject(smach.State):
                 if counter == 4:
                     self.val += 1
                 if self.val == 1:
-                    rospy.loginfo('here1')
                     self.led2.publish(1)
                     self.sound.publish(0)
 
                 elif self.val == 2:
-                    rospy.loginfo('here2')
                     self.led1.publish(1)
                     self.sound.publish(0)
                     rospy.sleep(0.5)
                     self.sound.publish(0)
                 else:
-                    rospy.loginfo('here3')
                     self.led1.publish(1)
                     self.led2.publish(1)
                     self.sound.publish(0)
@@ -525,26 +507,13 @@ class ScanObject(smach.State):
                 if cv2.contourArea(c) > 7000: 
                     num +=1
 
-
             rospy.loginfo(num)
-            #img = measure.label(redmask, background=0)
-            #img += 1
-            #propsa = measure.regionprops(img.astype(int))
-            #length = len(propsa)
-
             self.lst.append(num)
 
             if len(self.lst) > 15:
                 self.val = self.lst[-1]
                 self.found = 1
 
-        #self.grouping += length - 1
-        #self.i += 1
-        #self.avg = self.grouping/self.i
-        #cv2.imshow("window", redmask)
-        #cv2.waitKey(3)
-
-        
 
     def threshold_hsv_360(self,s_min, v_min, h_max, s_max, v_max, h_min, hsv):
         lower_color_range_0 = numpy.array([0, s_min, v_min],dtype=float)
@@ -561,8 +530,6 @@ class ReadShape(smach.State):
         smach.State.__init__(self, outcomes=['Turn180', 'TurnClock','Done'])
         self.cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity',
                             Twist, queue_size=1)
-        #self.image_sub = rospy.Subscriber('/camera/rgb/image_raw',   
-        #                Image,self.image_callback)
         self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
         self.led2 = rospy.Publisher('/mobile_base/commands/led2', Led, queue_size = 1 )
         self.sound = rospy.Publisher('/mobile_base/commands/sound', Sound, queue_size=1)
@@ -610,12 +577,11 @@ class ReadShape(smach.State):
                 mask = cv2.inRange(hsv,lower_red,upper_red) # green masks
             else:
                 mask = self.threshold_hsv_360(140,10,10,255,255,120,hsv)
-            #cv2.inRange(hsv,lower_red,upper_red)
-            #rospy.loginfo(redmask)
+
             ret, thresh = cv2.threshold(mask, 127, 255, 0)
             im2, cnts, hierarchy = cv2.findContours(thresh,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(mask, cnts, -1, (0,255,0), 3)
-            #cnts = imutils.grab_contours(cnts)
+
             sd = ShapeDetector()
             shape = None
             for c in cnts:
@@ -633,7 +599,6 @@ class ReadShape(smach.State):
                     shape =  max(set(self.shape_list), key=self.shape_list.count)
                     if gshape == shape:
                         self.led1.publish(3)
-                        #TODO: make beep
                         self.sound.publish(6)
                         
                     rospy.loginfo(shape)
@@ -651,213 +616,6 @@ class ReadShape(smach.State):
 
     ###COMPETITION 3 CODE STARTS HERE ####
 
-    ###AR TAG PART###
-
-# found_markers = []
-# start = None
-# position = None
-# orientation =  None
-
-class GoToStart(smach.State):
-    """
-    Return to the start in order to go to next AR tag
-    """
-    def __init__(self):
-        smach.State.__init__(self, outcomes=['FindTag','Done'])
-
-        rospy.loginfo("In GO to start")
-
-        rospy.loginfo("Setting up client")
-        self.client = actionlib.SimpleActionClient('/move_base', MoveBaseAction)
-    	rospy.loginfo("ready")
-    	self.client.wait_for_server()
-        rospy.loginfo("here")
-
-        self.startPosition = None
-        #TODO: set this  
-
-        
-    def execute(self,userdata):
-        rospy.loginfo("Executing State GoToStart")
-        self.goal = MoveBaseGoal()
-        self.goal.target_pose.header.frame_id = '/odom'
-        self.goal.target_pose.pose.position.x = self.start.position.x
-        self.goal.target_pose.pose.position.y = self.start.position.y
-        self.goal.target_pose.pose.position.z = self.start.position.z
-        self.goal.target_pose.pose.orientation.x = self.start.orientation.x
-        self.goal.target_pose.pose.orientation.y = self.start.orientation.y
-        self.goal.target_pose.pose.orientation.z = self.start.orientation.z
-        self.goal.target_pose.pose.orientation.w = self.start.orientation.w
-
-        while not rospy.is_shutdown():
-            rospy.loginfo("Executing GoToStart")
-            self.client.send_goal(self.goal)
-            self.client.wait_for_result()
-            return 'FindTag'
-
-        return 'Done'
-
-
-class GoToWayPointAR(smach.State):
-    """
-    Purpose: go to  waypoint once we are within threshold
-    """
-
-    def __init__(self):
-        smach.State.__init__(self, outcomes=['GoToStart','Done'])
-
-        self.alvar_sub = rospy.Subscriber('ar_pose_marker', AlvarMarkers, self.alvarCallback)
-        self.odom_sub = rospy.Subscriber('odom', Odometry, self.odomCallback)
-        self.led1 = rospy.Publisher('/mobile_base/commands/led1', Led, queue_size = 1 )
-
-        rospy.loginfo("Setting up client2")
-        self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
-    	self.client.wait_for_server()
-        rospy.loginfo("client Ready")
-
-        self.pose = None
-        self.goalPose = None
-
-
-    def execute(self, userdata):
-        rospy.loginfo("Executing GoToWayPointAR")
-
-        while not rospy.is_shutdown():
-            rospy.wait_for_message('ar_pose_marker', AlvarMarkers)
-            rospy.wait_for_message('odom', Odometry)
-
-            goal = self.calculateGoal()
-
-            self.client.send_goal(goal)
-            self.client.wait_for_result()
-            self.led1.publish(1) #make the light green
-            
-            return 'GoToWayPoint'
-
-        return 'done'
-
-    def calculateGoal(self):
-        t = self.pose
-        distToRobot = ros_numpy.numpify(self.pose) # p2
-        distToTag = ros_numpy.numpify(self.goalPose) #p1
-
-        distToTagGlobal = numpy.dot(distToRobot, distToTag) #gives us the pose of the tag w.r.t. global frame
-
-        distToTagGlobal = ros_numpy.msgify(Pose, distToTagGlobal)
-
-        goal = MoveBaseGoal()
-        goal.target_pose.header.frame_id = '/odom'
-        goal.target_pose.pose.position.x = distToTagGlobal.position.x 
-        goal.target_pose.pose.position.y = distToTagGlobal.position.y 
-        goal.target_pose.pose.position.z = 0
-        goal.target_pose.pose.orientation.x = self.pose.orientation.x 
-        goal.target_pose.pose.orientation.y = self.pose.orientation.y
-        goal.target_pose.pose.orientation.z = self.pose.orientation.z
-        goal.target_pose.pose.orientation.w = self.pose.orientation.w
-
-        quaternion = (  distToTagGlobal.orientation.x,
-                        distToTagGlobal.orientation.y,
-                        distToTagGlobal.orientation.z,
-                        distToTagGlobal.orientation.w
-                        )
-        
-
-        euler = tf.transformations.euler_from_quaternion(quaternion)
-        yaw = euler[2]
-        yaw -= math.pi/2
-
-        dx = 0.1*math.cos(yaw)
-        dy = 0.1*math.sin(yaw)
-        
-        goal.target_pose.pose.position.x += dx
-        goal.target_pose.pose.position.y += dy
-
-        return goal     
-
-
-    def odomCallback(self, msg):
-        self.pose = msg.pose.pose
-
-
-    def alvarCallback(self, msg):
-        try:
-            #rospy.loginfo(msg.markers[0].id)
-            marker = msg.markers[0]
-            self.goalPose = marker.pose.pose
-        except:
-            pass
-
-class FindTag(smach.State):
-    def __init__(self):
-
-        smach.State.__init__(self, outcomes=['ApproachTag','Done'])
-        self.cmd_vel_pub = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=5)
-        self.odom_sub = rospy.Subscriber('odom', Odometry, self.odomCallback)
-        rospy.Subscriber('ar_pose_marker', AlvarMarkers, self.set_cmd_vel)
-        
-
-        rospy.wait_for_message('ar_pose_marker', AlvarMarkers)
-        
-
-        self.move_cmd = Twist()  
-        # Set flag to indicate when the AR marker is visible
-        self.current_marker = None
-        self.look_for_marker = 1
-        self.now = 0
-        self.pose = None
-
-
-    def execute(self,userdata):
-        global start
-        rospy.loginfo("Executing State FindTag")
-
-        rospy.wait_for_message('odom', Odometry)
-
-        while not rospy.is_shutdown():
-            self.now = 1
-            self.move_cmd = Twist()
-            self.found = 0
-
-            while self.found == 0:
-                self.cmd_vel_pub.publish(self.move_cmd)
-            self.now = 0
-
-            return 'ApproachTag'
-        return 'Done'
-
-
-    def set_cmd_vel(self,msg):
-        # if there is a marker do try
-        global found_markers
-        if self.now:
-            try: 
-                marker = msg.markers[0]
-                self.current_marker = marker.id
-                if (self.current_marker not in found_markers) and (self.current_marker != 0):
-                        rospy.loginfo("FOLLOWER found Target!")
-                        found_markers.append(self.current_marker)
-                        self.found = 1
-                        rospy.loginfo(found_markers)
-
-                else:
-                    rospy.loginfo("FOLLOWER is looking for Target")
-                    self.move_cmd.linear.x = 0
-                    self.move_cmd.angular.z = 0.3
-
-            except:
-                self.move_cmd.linear.x = 0
-                self.move_cmd.angular.z = 0.3
-
-
-    def odomCallback(self, msg):
-        self.pose = msg.pose.pose
-
-
-    ### Go to Predetermined Waypoint ###
-
-#class GoToWayPoint(smach.state):
-#    def __init__():
-#	pass
 class Waypoint(smach.State):
     def __init__(self, name, position, orientation):
         smach.State.__init__(self, outcomes=['success','Line', 'exit'])
@@ -1027,20 +785,15 @@ class Waypoint(smach.State):
                 pass
 
 
-	
-        
-
-    
-
 def main():
-    rospy.init_node('Comp3')
+    rospy.init_node('Run_Robot_Parking')
     rate = rospy.Rate(10)
     sm = smach.StateMachine(outcomes = ['DoneProgram'])
     sm.set_initial_state(['LineFollow'])
 
     with sm:
         
-        #Compeition 2 states and transitions 
+        #Competition 2 states and transitions 
         smach.StateMachine.add('SleepState', SleepState(),
                                         transitions = {'Line': 'LineFollow',
                                                         'Done' : 'DoneProgram'})
@@ -1050,7 +803,6 @@ def main():
                                                         'TurnCounter': 'Turn90CounterClockwise',
                                                         'TurnClock': 'Turn90Clockwise',
                                                         'Stop': 'StopState',
-                                                        #'GoToParkingStart' :  'GoToStart',
                                                         'Done' : 'DoneProgram'})
 
         smach.StateMachine.add('StopState', StopState(),
@@ -1087,23 +839,6 @@ def main():
                                                                       'exit': ordered_waypoints[10][0]})
 
 
-
-    #    #AR tag-related states and transitions 
-   #     smach.StateMachine.add('GoToStart', GoToStart(),
-  #                                      transitions = {'FindTag': 'FindTag',
- #                                                       'Done' : 'DoneProgram'})
-#
-   #     smach.StateMachine.add('GoToWayPointAR', GoToWayPointAR(),
-  #                                      transitions = {'GoToWayPoint': 'GoToWayPoint',
- #                                                       'Done' : 'DoneProgram'})
-#
-   #     smach.StateMachine.add('ApproachTag', ApproachTag(),
-  #                                      transitions = {'GoToWayPointAR': 'GoToWayPointAR',
- #                                                       'Done' : 'DoneProgram'})
-#
- #       smach.StateMachine.add('FindTag', FindTag(),
- #                                       transitions = {'ApproachTag': 'ApproachTag',
- #                                                       'Done' : 'DoneProgram'})
     sis = smach_ros.IntrospectionServer('server_name', sm, '/SM_ROOT')
     
 
